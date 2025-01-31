@@ -8,6 +8,7 @@ redis = "*"
 fastapi = "*"
 aiosqlite = "*"
 uvicorn = "*"
+basedpyright = "*"
 
 [dev-packages]
 

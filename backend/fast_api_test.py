@@ -2,8 +2,9 @@ from redis import Redis
 import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
-import asyncio
+from collections.abc import AsyncGenerator
+
+# import asyncio
 import json
 import traceback
 
@@ -117,14 +118,14 @@ session_manager = SessionManager(redis_client)
 
 
 class SearchManager:
-    def __init__(self, redis_client):
-        self.redis = redis_client
-        self.expire_time = 3600  # 1 hour
+    def __init__(self, redis_client: Redis):
+        self.redis: Redis = redis_client
+        self.expire_time: int = 3600  # 1 hour
 
     async def create_search(self, search_id: str, spotify_id: str, artist_name: str):
         """Store search data in Redis"""
         search_data = {"spotify_id": spotify_id, "artist_name": artist_name}
-        self.redis.setex(
+        _ = self.redis.setex(
             f"search:{search_id}", self.expire_time, json.dumps(search_data)
         )
 
@@ -133,7 +134,7 @@ class SearchManager:
         data = self.redis.get(f"search:{search_id}")
         if not data:
             return None
-        return json.loads(data)
+        return json.loads(data) or None
 
     async def delete_search(self, search_id: str):
         """Remove search data from Redis"""
