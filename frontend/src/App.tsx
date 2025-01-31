@@ -1,4 +1,4 @@
-import SpotifyRecommender from "./components/SpotifyRecommender.tsx";
+import SpotifyRecommender from "./components/SpotifyRecommender";
 
 function App() {
   return (

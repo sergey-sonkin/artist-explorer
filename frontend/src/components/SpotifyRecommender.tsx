@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, ChangeEvent, KeyboardEvent } from "react";
 import { Search, ThumbsUp, ThumbsDown, Music2, Loader2 } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -23,7 +23,6 @@ const SpotifyRecommender: React.FC = () => {
   const [voteHistory, setVoteHistory] = useState<boolean[]>([]);
   const [artistId, setArtistId] = useState<string | null>(null);
   const [artistName, setArtistName] = useState<string | null>(null);
-  const [artist, setArtist] = useState<string | null>(null);
   const [searchId, setSearchId] = useState<string | null>(null);
 
   const handleSearch = async (): Promise<void> => {
@@ -66,7 +65,6 @@ const SpotifyRecommender: React.FC = () => {
               albumName: data.album_name,
               albumArt: "/api/placeholder/300/300",
             });
-            setArtist(searchQuery);
             eventSource.close();
             break;
           case "error":
@@ -130,7 +128,6 @@ const SpotifyRecommender: React.FC = () => {
         setCurrentState("search");
         setCurrentSong(null);
         setVoteHistory([]);
-        setArtist(null);
       } else {
         setCurrentSong({
           title: data.song.title,
@@ -157,8 +154,10 @@ const SpotifyRecommender: React.FC = () => {
           <Input
             placeholder="Enter an artist you like..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              setSearchQuery(e.target.value)
+            }
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
               if (e.key === "Enter") {
                 handleSearch();
               }
@@ -209,7 +208,6 @@ const SpotifyRecommender: React.FC = () => {
               <div className="text-center space-y-2">
                 <h2 className="text-xl font-bold">{currentSong.title}</h2>
                 <p className="text-gray-500">
-                  {console.log("currentSong:", currentSong)}
                   {currentSong.artists.join(", ")}
                 </p>
                 <p className="text-sm text-gray-400">{currentSong.duration}</p>
