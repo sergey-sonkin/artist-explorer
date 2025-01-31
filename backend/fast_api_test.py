@@ -481,10 +481,6 @@ async def record_vote(request: Request):
     return {"status": "continue", "song": next_song.to_dict()}
 
 
-# Store active searches (in a real app, use Redis or another suitable database)
-active_searches = {}
-
-
 @app.post("/api/start-search")
 async def start_search(request: Request):
     data = await request.json()
