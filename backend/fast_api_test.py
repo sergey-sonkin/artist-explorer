@@ -439,12 +439,16 @@ async def event_generator(search_id: str) -> AsyncGenerator[str, None]:
             raise
 
         # Send completion status with first song
-        yield f"data: {json.dumps({
-            'status': 'completed',
-            'song': tree.song.to_dict(),
-            'artistId': spotify_id,
-            'artistName': artist_name
-        })}\n\n"
+        yield f"data: {
+            json.dumps(
+                {
+                    'status': 'completed',
+                    'song': tree.song.to_dict(),
+                    'artistId': spotify_id,
+                    'artistName': artist_name,
+                }
+            )
+        }\n\n"
 
     except Exception as e:
         error_message = {
@@ -459,9 +463,6 @@ async def event_generator(search_id: str) -> AsyncGenerator[str, None]:
     finally:
         # Clean up from Redis instead of active_searches
         await search_manager.delete_search(search_id)
-
-
-active_sessions = {}
 
 
 @app.post("/api/vote")
