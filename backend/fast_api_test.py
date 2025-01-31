@@ -53,8 +53,8 @@ class Song:
 @dataclass
 class TreeNode:
     song: Song
-    left: Optional["TreeNode"] = None
-    right: Optional["TreeNode"] = None
+    vote_no: Optional["TreeNode"] = None
+    vote_yes: Optional["TreeNode"] = None
 
 
 class SessionManager:
@@ -92,8 +92,8 @@ class SessionManager:
             return None
         return {
             "song": node.song.to_dict(),
-            "left": self._serialize_tree(node.left) if node.left else None,
-            "right": self._serialize_tree(node.right) if node.right else None,
+            "left": self._serialize_tree(node.vote_no) if node.vote_no else None,
+            "right": self._serialize_tree(node.vote_yes) if node.vote_yes else None,
         }
 
     async def get_current_song(
@@ -169,21 +169,21 @@ def create_mock_decision_tree(artist_name: str) -> TreeNode:
     """Create a mock decision tree 5 levels deep"""
     return TreeNode(
         song=Song(song_id="0", title="Root song", artists = [artist_name], album_name = "Album 0"),
-        left=TreeNode(
+        vote_no=TreeNode(
             song=Song(song_id="1", title="No Song 1", artists = [artist_name], album_name = "Album 1"),
-            left=TreeNode(
+            vote_no=TreeNode(
                 song= Song(song_id="2", title="No-No Song", artists = [artist_name], album_name = "Album 2"),
             ),
-            right=TreeNode(
+            vote_yes=TreeNode(
                 song= Song(song_id="3", title="No-Yes Song", artists = [artist_name], album_name = "Album 3"),
             ),
         ),
-        right=TreeNode(
+        vote_yes=TreeNode(
             song=Song(song_id="4", title="Yes Song 1", artists = [artist_name], album_name = "Album 4"),
-            left=TreeNode(
+            vote_no=TreeNode(
                 song= Song(song_id="5", title="Yes-No Song", artists = [artist_name], album_name = "Album 5"),
             ),
-            right=TreeNode(
+            vote_yes=TreeNode(
                 song= Song(song_id="6", title="Yes-Yes Song", artists = [artist_name], album_name = "Album 6"),
             ),
         ),
@@ -195,9 +195,9 @@ def get_next_song(tree: TreeNode, vote_history: list) -> Optional[Song]:
     current = tree
     for vote in vote_history:
         if vote:
-            current = current.right
+            current = current.vote_yes
         else:
-            current = current.left
+            current = current.vote_no
         if current is None:
             return None
     return current.song
