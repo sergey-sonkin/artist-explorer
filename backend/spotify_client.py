@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, Field
 import httpx
 import base64
@@ -57,7 +57,7 @@ class SpotifyClient:
             self.token = json_result.get("access_token")
             return self.token
 
-    async def get_artist_albums(self, artist_id: str) -> List[Album]:
+    async def get_artist_albums(self, artist_id: str) -> list[Album]:
         """Get all albums for an artist"""
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}"}
@@ -78,7 +78,7 @@ class SpotifyClient:
 
         return albums
 
-    async def get_album_tracks(self, album_id: str) -> List[Track]:
+    async def get_album_tracks(self, album_id: str) -> list[Track]:
         """Get all tracks from an album"""
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}"}
@@ -91,7 +91,6 @@ class SpotifyClient:
                 response = await client.get(url, headers=headers, params=params)
                 json_result = response.json()
 
-                # Convert each track dict to Track model
                 tracks.extend([Track(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
@@ -99,11 +98,11 @@ class SpotifyClient:
 
         return tracks
 
-    async def get_all_artist_tracks(self, artist_id: str) -> List[Track]:
+    async def get_all_artist_tracks(self, artist_id: str) -> list[Track]:
         """Get all tracks by an artist through their albums"""
         albums = await self.get_artist_albums(artist_id)
 
-        all_tracks: List[Track] = []
+        all_tracks: list[Track] = []
         for album in albums:
             album_tracks = await self.get_album_tracks(album.id)
             for track in album_tracks:

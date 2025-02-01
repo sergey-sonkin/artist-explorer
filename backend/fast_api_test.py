@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import aiosqlite
 from datetime import datetime, timedelta
+from spotify_client import SpotifyClient, Track
 
 from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
 
@@ -34,6 +35,8 @@ async def startup_event():
 redis_client = Redis(host="localhost", port=6379, db=0)
 session_manager = SessionManager(redis_client)
 search_manager = SearchManager(redis_client)
+
+spotify_client = SpotifyClient()
 
 
 @dataclass
@@ -74,7 +77,7 @@ async def sanitize_table_name(spotify_id: str) -> str:
 async def init_db():
     """Initialize the database with artists table"""
     async with aiosqlite.connect("songs.db") as db:
-        await db.execute(
+        _ = await db.execute(
             """
             CREATE TABLE IF NOT EXISTS artists (
                 spotify_id TEXT PRIMARY KEY,
@@ -205,37 +208,33 @@ async def check_artist_status(
         return last_updated < two_weeks_ago, table_name
 
 
-async def update_artist_songs(spotify_id: str, artist_name: str, songs: list):
+async def update_artist_songs(spotify_id: str, artist_name: str, tracks: list[Track]):
     """Store or update songs for an artist"""
     table_name = await sanitize_table_name(artist_name)
 
     async with aiosqlite.connect("songs.db") as db:
-        # Update last_updated timestamp
         await db.execute(
             "UPDATE artists SET last_updated = ? WHERE name = ?",
             (datetime.now().isoformat(), artist_name),
         )
 
-        # Ensure table exists
-        print(f"Ensuring table {table_name=}")
         await ensure_artist_table(db=db, table_name=table_name)
-
-        # Clear existing songs (optional, depends on your update strategy)
         await db.execute(f"DELETE FROM {table_name}")
 
-        # Insert new songs
-        for song in songs:
+        # Convert Track models to dictionaries for database storage
+        for track in tracks:
+            track_dict = spotify_client.track_to_dict(track)
             await db.execute(
                 f"""
                 INSERT OR REPLACE INTO {table_name}
                 (title, spotify_id, album_name, popularity)
                 VALUES (?, ?, ?, ?)
-            """,
+                """,
                 (
-                    song["title"],
-                    song.get("spotify_id"),
-                    song.get("album_name"),
-                    song.get("popularity", 0),
+                    track_dict["title"],
+                    track_dict["spotify_id"],
+                    track_dict["album_name"],
+                    track_dict["popularity"],
                 ),
             )
 
@@ -255,33 +254,18 @@ async def search_songs_for_artist(
         print(f"Finished checking artist status for {artist_name=}")
 
     if needs_update:
-        # In real implementation, call Spotify API here
-        songs = [
-            {
-                "title": "Song 1",
-                "spotify_id": "abc123",
-                "album": "Album 1",
-                "popularity": 75,
-            },
-            {
-                "title": "Song 2",
-                "spotify_id": "def456",
-                "album": "Album 1",
-                "popularity": 80,
-            },
-        ]
+        # Get tracks from Spotify API
+        tracks = await spotify_client.get_all_artist_tracks(spotify_id)
         await update_artist_songs(
-            spotify_id=spotify_id, artist_name=artist_name, songs=songs
+            spotify_id=spotify_id, artist_name=artist_name, songs=tracks
         )
 
     # Retrieve songs from database
     async with aiosqlite.connect("songs.db") as db:
-        cursor = await db.execute(
-            f"""
+        cursor = await db.execute(f"""
             SELECT title, spotify_id, album_name, popularity
             FROM {table_name}
-        """
-        )
+        """)
 
         rows = await cursor.fetchall()
         return [
