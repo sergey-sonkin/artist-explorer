@@ -1,6 +1,7 @@
 from redis import Redis
 import uuid
 from fastapi import FastAPI, Request
+from dataclasses import dataclass
 from fastapi.responses import StreamingResponse
 from collections.abc import AsyncGenerator
 
@@ -9,139 +10,46 @@ import json
 import traceback
 
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, Dict
+from typing import Optional
 import aiosqlite
 from datetime import datetime, timedelta
-import re
+
+from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Your React app's URL
+    allow_origins=["http://localhost:3000"],  # React app's URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Add to FastAPI app
 @app.on_event("startup")
 async def startup_event():
     await init_db()
 
 
 redis_client = Redis(host="localhost", port=6379, db=0)
-
-from dataclasses import dataclass
+session_manager = SessionManager(redis_client)
+search_manager = SearchManager(redis_client)
 
 
 @dataclass
-class Song:
-    song_id: str
-    title: str
-    artists: list[str]
-    album_name: str = "album name"
-    popularity: int = 0
+class SessionData:
+    search_id: str
+    spotify_id: str
+    artist_name: str
+    tree: TreeNode
 
     def to_dict(self):
         return {
-            "song_id": self.song_id,
-            "title": self.title,
-            "artists": self.artists,
-            "album_name": self.album_name,
-            "popularity": self.popularity,
+            "search_id": self.search_id,
+            "spotify_id": self.spotify_id,
+            "artist_name": self.artist_name,
+            "tree": self.tree.to_dict(),
         }
-
-
-@dataclass
-class TreeNode:
-    song: Song
-    vote_no: Optional["TreeNode"] = None
-    vote_yes: Optional["TreeNode"] = None
-
-
-class SessionManager:
-    def __init__(self, redis_client):
-        self.redis = redis_client
-        self.expire_time = 3600  # 1 hour
-
-    async def create_session(
-        self, search_id: str, spotify_id: str, artist_name: str, tree: TreeNode
-    ):
-        session_data = {
-            "spotify_id": spotify_id,
-            "artist_name": artist_name,
-            "tree": self._serialize_tree(tree),
-        }
-        self.redis.setex(
-            f"session:{search_id}", self.expire_time, json.dumps(session_data)
-        )
-
-    async def get_session(self, search_id: str) -> Optional[dict]:
-        """Retrieve session data from Redis"""
-        data = self.redis.get(f"session:{search_id}")
-        if not data:
-            return None
-        return json.loads(data)
-
-    async def update_session(self, search_id: str, session_data: dict):
-        """Update session data in Redis"""
-        self.redis.setex(
-            f"session:{search_id}", self.expire_time, json.dumps(session_data)
-        )
-
-    def _serialize_tree(self, node: TreeNode) -> Optional[dict]:
-        if node is None:
-            return None
-        return {
-            "song": node.song.to_dict(),
-            "left": self._serialize_tree(node.vote_no) if node.vote_no else None,
-            "right": self._serialize_tree(node.vote_yes) if node.vote_yes else None,
-        }
-
-    async def get_current_song(
-        self, search_id: str, vote_history: list
-    ) -> Optional[dict]:
-        session_data = json.loads(self.redis.get(f"session:{search_id}"))
-        node = session_data["tree"]
-
-        # Navigate to current position in tree
-        for vote in vote_history:
-            node = node["right"] if vote else node["left"]
-            if node is None:
-                return None
-
-        return node["song"]
-
-
-session_manager = SessionManager(redis_client)
-
-
-class SearchManager:
-    def __init__(self, redis_client: Redis):
-        self.redis: Redis = redis_client
-        self.expire_time: int = 3600  # 1 hour
-
-    async def create_search(self, search_id: str, spotify_id: str, artist_name: str):
-        """Store search data in Redis"""
-        search_data = {"spotify_id": spotify_id, "artist_name": artist_name}
-        _ = self.redis.setex(
-            f"search:{search_id}", self.expire_time, json.dumps(search_data)
-        )
-
-    async def get_search(self, search_id: str) -> Optional[dict]:
-        """Retrieve search data from Redis"""
-        data = self.redis.get(f"search:{search_id}")
-        if not data:
-            return None
-        return json.loads(data) or None
-
-    async def delete_search(self, search_id: str):
-        """Remove search data from Redis"""
-        self.redis.delete(f"search:{search_id}")
-
-
-search_manager = SearchManager(redis_client)
 
 
 async def create_decision_tree(spotify_id: str, artist_name: str) -> TreeNode:
@@ -399,8 +307,8 @@ async def event_generator(search_id: str) -> AsyncGenerator[str, None]:
         if not search_data:
             raise KeyError(f"Search {search_id} not found")
 
-        spotify_id = search_data["spotify_id"]
-        artist_name = search_data["artist_name"]
+        spotify_id = search_data.artist_id
+        artist_name = search_data.artist_name
 
         # Process artist and create decision tree
         try:
@@ -485,14 +393,15 @@ async def record_vote(request: Request):
 @app.post("/api/start-search")
 async def start_search(request: Request):
     data = await request.json()
-    spotify_id = data["spotifyId"]
+    spotify_id: str = data["spotifyId"]
     search_id = str(uuid.uuid4())
+    search = Search(
+        search_id=search_id, artist_id=spotify_id, artist_name=f"Artist_{spotify_id}"
+    )
     artist_name = f"Artist_{spotify_id}"
 
     # Store in Redis instead of active_searches
-    await search_manager.create_search(
-        search_id=search_id, spotify_id=spotify_id, artist_name=artist_name
-    )
+    await search_manager.create_search(search_id=search_id, search=search)
 
     return {"searchId": search_id, "artistId": spotify_id, "artistName": artist_name}
 
