@@ -4,11 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-redis = "*"
-fastapi = "*"
 aiosqlite = "*"
-uvicorn = "*"
 basedpyright = "*"
+fastapi = "*"
+redis = "*"
+sqlalchemy = "*"
+uvicorn = "*"
 
 [dev-packages]
 

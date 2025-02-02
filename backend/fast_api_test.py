@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 from database import get_db, TrackManager, get_or_create_artist, TrackResponse, init_db
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, Request
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -10,7 +9,6 @@ from redis import Redis
 from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
 from spotify_client import SpotifyClient
 from sqlalchemy.ext.asyncio import AsyncSession
-import aiosqlite
 import json
 import traceback
 import uuid
@@ -44,14 +42,6 @@ class SessionData:
     artist_name: str
     tree: TreeNode
 
-    def to_dict(self):
-        return {
-            "search_id": self.search_id,
-            "spotify_id": self.spotify_id,
-            "artist_name": self.artist_name,
-            "tree": self.tree.to_dict(),
-        }
-
 
 async def create_decision_tree(
     db: AsyncSession, spotify_id: str, artist_name: str
@@ -62,22 +52,6 @@ async def create_decision_tree(
     # For now, create mock tree structure
     # Later, use tracks to create real decision tree
     return create_mock_decision_tree(artist_name=artist_name)
-
-
-async def init_db():
-    """Initialize the database with artists table"""
-    async with aiosqlite.connect("songs.db") as db:
-        _ = await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS artists (
-                spotify_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                table_name TEXT UNIQUE,
-                last_updated TIMESTAMP
-            )
-        """
-        )
-        await db.commit()
 
 
 def create_mock_decision_tree(artist_name: str) -> TreeNode:

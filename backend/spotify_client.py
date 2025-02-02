@@ -18,7 +18,7 @@ class SpotifyTrack(BaseModel):
     popularity: int = 0
 
     class Config:
-        allow_population_by_field_name: bool = True
+        populate_by_name: bool = True
 
 
 class SpotifyAlbum(BaseModel):

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, asdict
 import json
-from typing import Optional, Any
+from typing import Any, Self
 from redis import Redis
 
 
@@ -25,8 +25,8 @@ class Song:
 @dataclass
 class TreeNode:
     song: Song
-    vote_no: Optional["TreeNode"] = None
-    vote_yes: Optional["TreeNode"] = None
+    vote_no: Self | None = None
+    vote_yes: Self | None = None
 
     def to_dict(self):
         return {

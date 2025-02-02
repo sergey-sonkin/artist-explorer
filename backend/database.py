@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, String, Integer, DateTime, Table, delete, insert, select
 from datetime import datetime, timezone
 
-from backend.spotify_client import SpotifyTrack
+from spotify_client import SpotifyTrack
 
 DATABASE_URL = "sqlite+aiosqlite:///songs.db"
 engine = create_async_engine(DATABASE_URL, echo=True)
@@ -22,7 +22,7 @@ class TrackResponse(BaseModel):
     popularity: int = 0
 
     class Config:
-        orm_mode: bool = True  # Allows conversion from SQLAlchemy models
+        from_attributes: bool = True
 
 
 class Artist(Base):
