@@ -132,15 +132,24 @@ async def search_songs_for_artist(
         print(f"Checking artist status for {artist_name=}")
 
     # Get or create artist
+    if debug:
+        print(f"Getting or creating artist for {artist_name=}")
     artist = await get_or_create_artist(db, artist_id, artist_name)
-    needs_update = datetime.now(timezone.utc) - artist.last_updated > timedelta(weeks=2)
+    current_time = datetime.now(timezone.utc)
+    last_updated = (
+        artist.last_updated.replace(tzinfo=timezone.utc)
+        if artist.last_updated.tzinfo is None
+        else artist.last_updated
+    )
+    needs_update = current_time - last_updated > timedelta(weeks=2)
 
+    if debug:
+        print(f"About to calculate tracks for {artist_name=}")
     if needs_update:
         # Get tracks from Spotify API
         tracks = await spotify_client.get_all_artist_tracks(artist_id)
         await TrackManager.update_tracks(db, artist_id, tracks)
 
-    # Retrieve songs from database
     return await TrackManager.get_tracks(db, artist_id)
 
 

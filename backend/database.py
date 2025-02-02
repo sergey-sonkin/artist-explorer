@@ -1,8 +1,17 @@
-from typing import final
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, Integer, DateTime, Table, delete, insert, select
+from sqlalchemy import (
+    Column,
+    Connection,
+    String,
+    Integer,
+    DateTime,
+    Table,
+    delete,
+    insert,
+    select,
+)
 from datetime import datetime, timezone
 
 from spotify_client import SpotifyTrack
@@ -30,7 +39,6 @@ class Artist(Base):
 
     spotify_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
-    table_name = Column(String, unique=True, nullable=False)
     last_updated = Column(DateTime, default=timezone.utc)
 
 
@@ -61,17 +69,23 @@ class TrackManager:
     async def ensure_table_exists(db: AsyncSession, artist_id: str):
         """Create track table if it doesn't exist"""
         table = create_track_table(artist_id)
+
+        def create_table(connection: Connection):
+            table.create(bind=connection, checkfirst=True)
+
         async with engine.begin() as conn:
-            await conn.run_sync(
-                lambda: Base.metadata.create_table(table, checkfirst=True)
-            )
+            await conn.run_sync(create_table)
 
     @staticmethod
     async def update_tracks(
         db: AsyncSession, artist_id: str, tracks: list[SpotifyTrack]
     ):
         """Update tracks for an artist"""
+        # Ensure table exists before operations
+        await TrackManager.ensure_table_exists(db, artist_id)
+
         table = create_track_table(artist_id)
+        print(f"We created or retrieved a table for artist {artist_id=}")
 
         # Clear existing tracks
         _ = await db.execute(delete(table))
@@ -90,10 +104,12 @@ class TrackManager:
         await db.commit()
 
     @staticmethod
-    @staticmethod
     async def get_tracks(db: AsyncSession, artist_id: str) -> list[TrackResponse]:
         """Get all tracks for an artist"""
+        await TrackManager.ensure_table_exists(db, artist_id)
+
         table = create_track_table(artist_id)
+        print(f"About to fetch all tracks for {artist_id=}")
 
         stmt = select(
             table.c.spotify_id,
@@ -121,6 +137,9 @@ class TrackManager:
         db: AsyncSession, artist_id: str, track_id: str
     ) -> TrackResponse | None:
         """Get a specific track"""
+        # Ensure table exists before operations
+        await TrackManager.ensure_table_exists(db, artist_id)
+
         table = create_track_table(artist_id)
 
         stmt = select(table).where(table.c.spotify_id == track_id)
@@ -146,16 +165,16 @@ async def get_or_create_artist(db: AsyncSession, spotify_id: str, name: str) -> 
     artist = result.scalar_one_or_none()
 
     if artist is None:
-        table_name = f"tracks_{spotify_id.replace('-', '_')}"
         artist = Artist(
             spotify_id=spotify_id,
             name=name,
-            table_name=table_name,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
         )
         db.add(artist)
         await db.commit()
         await db.refresh(artist)
+
+        await TrackManager.ensure_table_exists(db, spotify_id)
 
     return artist
 
