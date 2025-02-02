@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import aiosqlite
 from datetime import datetime, timedelta
-from spotify_client import SpotifyClient, Track
+from spotify_client import SpotifyClient, SpotifyTrack
 
 from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
 
@@ -56,22 +56,19 @@ class SessionData:
 
 
 async def create_decision_tree(spotify_id: str, artist_name: str) -> TreeNode:
-    """Create decision tree based on artist's songs"""
-    table_name = await sanitize_table_name(artist_name)
+    table_name = await sanitize_table_name(spotify_id)
 
     async with aiosqlite.connect("songs.db") as db:
-        # Get all songs for artist
         cursor = await db.execute(f"SELECT * FROM {table_name}")
         songs = await cursor.fetchall()
 
         # For now, create mock tree structure
-        # Later, implement actual recommendation logic here
         return create_mock_decision_tree(artist_name=artist_name)
 
 
 async def sanitize_table_name(spotify_id: str) -> str:
     """Convert Spotify ID to valid table name"""
-    return f"songs_{spotify_id.replace('.', '_')}"
+    return f"songs_{spotify_id.replace('-', '_')}"
 
 
 async def init_db():
@@ -195,7 +192,7 @@ async def check_artist_status(
             # New artist - create entry and table
             if debug:
                 print(f"Creating new artist entry for {spotify_id=}")
-            await db.execute(
+            _ = await db.execute(
                 "INSERT INTO artists (spotify_id, name, table_name, last_updated) VALUES (?, ?, ?, ?)",
                 (spotify_id, artist_name, table_name, datetime.now().isoformat()),
             )
@@ -208,14 +205,17 @@ async def check_artist_status(
         return last_updated < two_weeks_ago, table_name
 
 
-async def update_artist_songs(spotify_id: str, artist_name: str, tracks: list[Track]):
+async def update_artist_songs(
+    artist_id: str, artist_name: str, tracks: list[SpotifyTrack]
+):
     """Store or update songs for an artist"""
-    table_name = await sanitize_table_name(artist_name)
+    table_name = await sanitize_table_name(artist_id)
 
     async with aiosqlite.connect("songs.db") as db:
+        # Update last_updated timestamp using spotify_id
         await db.execute(
-            "UPDATE artists SET last_updated = ? WHERE name = ?",
-            (datetime.now().isoformat(), artist_name),
+            "UPDATE artists SET last_updated = ? WHERE spotify_id = ?",
+            (datetime.now().isoformat(), artist_id),
         )
 
         await ensure_artist_table(db=db, table_name=table_name)
@@ -242,22 +242,22 @@ async def update_artist_songs(spotify_id: str, artist_name: str, tracks: list[Tr
 
 
 async def search_songs_for_artist(
-    spotify_id: str, artist_name: str, debug=False
+    artist_id: str, artist_name: str, debug=False
 ) -> list:
     """Search for songs, updating database if necessary"""
     if debug:
         print(f"Checking artist status for {artist_name=}")
     needs_update, table_name = await check_artist_status(
-        spotify_id=spotify_id, artist_name=artist_name, debug=True
+        spotify_id=artist_id, artist_name=artist_name, debug=True
     )
     if debug:
         print(f"Finished checking artist status for {artist_name=}")
 
     if needs_update:
         # Get tracks from Spotify API
-        tracks = await spotify_client.get_all_artist_tracks(spotify_id)
+        tracks = await spotify_client.get_all_artist_tracks(artist_id)
         await update_artist_songs(
-            spotify_id=spotify_id, artist_name=artist_name, songs=tracks
+            artist_id=artist_id, artist_name=artist_name, tracks=tracks
         )
 
     # Retrieve songs from database
@@ -297,7 +297,7 @@ async def event_generator(search_id: str) -> AsyncGenerator[str, None]:
         # Process artist and create decision tree
         try:
             songs = await search_songs_for_artist(
-                spotify_id=spotify_id, artist_name=artist_name, debug=True
+                artist_id=spotify_id, artist_name=artist_name, debug=True
             )
             if debug:
                 print(f"Retrieved songs: {songs}")
@@ -382,7 +382,7 @@ async def start_search(request: Request):
     search = Search(
         search_id=search_id, artist_id=spotify_id, artist_name=f"Artist_{spotify_id}"
     )
-    artist_name = f"Artist_{spotify_id}"
+    artist_name = f"Artist ID: {spotify_id}"
 
     # Store in Redis instead of active_searches
     await search_manager.create_search(search_id=search_id, search=search)

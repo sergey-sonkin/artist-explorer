@@ -1,19 +1,18 @@
-from typing import Optional
 from pydantic import BaseModel, Field
 import httpx
 import base64
 import os
 
 
-class Artist(BaseModel):
+class SpotifyArtist(BaseModel):
     id: str
     name: str
 
 
-class Track(BaseModel):
+class SpotifyTrack(BaseModel):
     title: str = Field(..., alias="name")
     spotify_id: str = Field(..., alias="id")
-    artists: list[Artist]
+    artists: list[SpotifyArtist]
     album_name: str | None = None
     album_id: str | None = None
     popularity: int = 0
@@ -22,18 +21,19 @@ class Track(BaseModel):
         allow_population_by_field_name: bool = True
 
 
-class Album(BaseModel):
+class SpotifyAlbum(BaseModel):
     id: str
     name: str
-    tracks: list[Track] = []
+    tracks: list[SpotifyTrack] = []
 
 
 class SpotifyClient:
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         self.client_id: str | None = os.getenv("SPOTIFY_CLIENT_ID")
         self.client_secret: str | None = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.token: str | None = None
         self.base_url: str = "https://api.spotify.com/v1"
+        self.debug: bool = debug
 
     async def get_token(self) -> str:
         """Get or refresh Spotify access token"""
@@ -57,28 +57,28 @@ class SpotifyClient:
             self.token = json_result.get("access_token")
             return self.token
 
-    async def get_artist_albums(self, artist_id: str) -> list[Album]:
+    async def get_artist_albums(self, artist_id: str) -> list[SpotifyAlbum]:
         """Get all albums for an artist"""
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}"}
         url = f"{self.base_url}/artists/{artist_id}/albums"
         params = {"include_groups": "album,single", "limit": 50}
 
-        albums = []
+        albums: list[SpotifyAlbum] = []
         async with httpx.AsyncClient() as client:
             while url:
                 response = await client.get(url, headers=headers, params=params)
                 json_result = response.json()
 
                 # Convert each album dict to Album model
-                albums.extend([Album(**item) for item in json_result["items"]])
+                albums.extend([SpotifyAlbum(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
                 params = {}
 
         return albums
 
-    async def get_album_tracks(self, album_id: str) -> list[Track]:
+    async def get_album_tracks(self, album_id: str) -> list[SpotifyTrack]:
         """Get all tracks from an album"""
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}"}
@@ -91,18 +91,18 @@ class SpotifyClient:
                 response = await client.get(url, headers=headers, params=params)
                 json_result = response.json()
 
-                tracks.extend([Track(**item) for item in json_result["items"]])
+                tracks.extend([SpotifyTrack(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
                 params = {}
 
         return tracks
 
-    async def get_all_artist_tracks(self, artist_id: str) -> list[Track]:
+    async def get_all_artist_tracks(self, artist_id: str) -> list[SpotifyTrack]:
         """Get all tracks by an artist through their albums"""
         albums = await self.get_artist_albums(artist_id)
 
-        all_tracks: list[Track] = []
+        all_tracks: list[SpotifyTrack] = []
         for album in albums:
             album_tracks = await self.get_album_tracks(album.id)
             for track in album_tracks:
@@ -113,13 +113,3 @@ class SpotifyClient:
                     all_tracks.append(track)
 
         return all_tracks
-
-    def track_to_dict(self, track: Track) -> dict:
-        """Convert Track model to dictionary format expected by database"""
-        return {
-            "title": track.title,
-            "spotify_id": track.spotify_id,
-            "album_name": track.album_name,
-            "album_id": track.album_id,
-            "popularity": track.popularity,
-        }
