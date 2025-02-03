@@ -1,17 +1,19 @@
+import json
+import traceback
+import uuid
 from collections.abc import AsyncGenerator
-from database import get_db, TrackManager, get_or_create_artist, TrackResponse, init_db
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, Request, Depends, HTTPException
+
+from database import TrackManager, TrackResponse, get_db, get_or_create_artist, init_db
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from redis import Redis
 from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
 from spotify_client import SpotifyClient
 from sqlalchemy.ext.asyncio import AsyncSession
-import json
-import traceback
-import uuid
+from tree_builder import create_tree_from_tracks
 
 app = FastAPI()
 app.add_middleware(
@@ -48,10 +50,7 @@ async def create_decision_tree(
 ) -> TreeNode:
     """Create decision tree based on artist's songs"""
     tracks = await TrackManager.get_tracks(db, spotify_id)
-
-    # For now, create mock tree structure
-    # Later, use tracks to create real decision tree
-    return create_mock_decision_tree(artist_name=artist_name)
+    return create_tree_from_tracks(tracks, artist_name)
 
 
 def create_mock_decision_tree(artist_name: str) -> TreeNode:
@@ -132,23 +131,25 @@ async def search_songs_for_artist(
         print(f"Checking artist status for {artist_name=}")
 
     # Get or create artist
-    if debug:
-        print(f"Getting or creating artist for {artist_name=}")
     artist = await get_or_create_artist(db, artist_id, artist_name)
-    current_time = datetime.now(timezone.utc)
-    last_updated = (
-        artist.last_updated.replace(tzinfo=timezone.utc)
-        if artist.last_updated.tzinfo is None
-        else artist.last_updated
-    )
-    needs_update = current_time - last_updated > timedelta(weeks=2)
 
-    if debug:
-        print(f"About to calculate tracks for {artist_name=}")
-    if needs_update:
+    # If last_updated is None or older than 2 weeks, update needed
+    print("-------------------------------------")
+    print(f"Last updated: {artist.last_updated=}")
+    print("-------------------------------------")
+    last_updated: datetime = artist.last_updated.replace(tzinfo=timezone.utc)
+    needs_update = artist.last_updated is None or datetime.now(
+        timezone.utc
+    ) - last_updated > timedelta(weeks=2)
+
+    if bool(needs_update):
         # Get tracks from Spotify API
         tracks = await spotify_client.get_all_artist_tracks(artist_id)
         await TrackManager.update_tracks(db, artist_id, tracks)
+
+        # Update last_updated AFTER successful import
+        artist.last_updated = datetime.now(timezone.utc)
+        await db.commit()
 
     return await TrackManager.get_tracks(db, artist_id)
 

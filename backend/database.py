@@ -1,20 +1,20 @@
+from datetime import datetime, timezone
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from spotify_client import SpotifyTrack
 from sqlalchemy import (
     Column,
     Connection,
-    String,
-    Integer,
     DateTime,
+    Integer,
+    String,
     Table,
     delete,
     insert,
     select,
+    text,
 )
-from datetime import datetime, timezone
-
-from spotify_client import SpotifyTrack
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = "sqlite+aiosqlite:///songs.db"
 engine = create_async_engine(DATABASE_URL, echo=True)
@@ -39,11 +39,14 @@ class Artist(Base):
 
     spotify_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
-    last_updated = Column(DateTime, default=timezone.utc)
+    last_updated = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 def create_track_table(artist_id: str) -> Table:
-    """Dynamically create a track table for an artist"""
+    """Dynamically create a track table for an artist. Does not ensure it is persisted in DB."""
     table_name = f"tracks_{artist_id.replace('-', '_')}"
 
     return Table(
@@ -168,7 +171,7 @@ async def get_or_create_artist(db: AsyncSession, spotify_id: str, name: str) -> 
         artist = Artist(
             spotify_id=spotify_id,
             name=name,
-            last_updated=datetime.now(timezone.utc),
+            last_updated=None,
         )
         db.add(artist)
         await db.commit()

@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
-import httpx
 import base64
 import os
+
+import httpx
+from pydantic import BaseModel, Field
 
 
 class SpotifyArtist(BaseModel):
@@ -90,6 +91,9 @@ class SpotifyClient:
             while url:
                 response = await client.get(url, headers=headers, params=params)
                 json_result = response.json()
+                print("==========================")
+                print(json_result)
+                print("==========================")
 
                 tracks.extend([SpotifyTrack(**item) for item in json_result["items"]])
 
