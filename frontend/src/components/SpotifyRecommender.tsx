@@ -4,6 +4,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { VoteRequest, VoteResponse, SearchResponse, Song } from "../types/api";
+import SpotifyPlayer from "./SpotifyPlayer";
 
 type CurrentState = "search" | "searching" | "loading" | "recommendation";
 
@@ -21,7 +22,6 @@ const SpotifyRecommender: React.FC = () => {
   const [currentState, setCurrentState] = useState<CurrentState>("search");
   const [currentSong, setCurrentSong] = useState<CurrentSong | null>(null);
   const [artistId, setArtistId] = useState<string | null>(null);
-  const [artistName, setArtistName] = useState<string | null>(null);
   const [searchId, setSearchId] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<number>(1);
 
@@ -43,7 +43,6 @@ const SpotifyRecommender: React.FC = () => {
       console.log("Data received: ", data);
       setSearchId(data.searchId);
       setArtistId(data.artistId);
-      setArtistName(data.artistName);
 
       const eventSource = new EventSource(
         `http://127.0.0.1:8000/api/search-updates/${data.searchId}`,
@@ -210,6 +209,9 @@ const SpotifyRecommender: React.FC = () => {
                 </p>
                 <p className="text-sm text-gray-400">{currentSong.duration}</p>
               </div>
+
+              {/* Spotify Player */}
+              <SpotifyPlayer songId={currentSong.id} />
 
               {/* Voting Buttons */}
               <div className="flex justify-center gap-4">
