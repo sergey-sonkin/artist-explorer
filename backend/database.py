@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
+import random
+from trace import Trace
 from pydantic import BaseModel
 from spotify_client import SpotifyTrack
 from sqlalchemy import (
+    JSON,
     Column,
     Connection,
     DateTime,
@@ -23,12 +26,32 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 Base = declarative_base()
 
 
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+# DB session dependency
+async def get_db() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
 class TrackResponse(BaseModel):
     spotify_id: str
     title: str
     album_id: str | None = None
     album_name: str | None = None
     popularity: int = 0
+    artists: list[str]
+    album_art_url: str | None = None
 
     class Config:
         from_attributes: bool = True
@@ -56,7 +79,9 @@ def create_track_table(artist_id: str) -> Table:
         Column("title", String, nullable=False),
         Column("album_id", String),
         Column("album_name", String),
+        Column("artists", JSON),
         Column("popularity", Integer, default=0),
+        Column("album_art_url", String),
         extend_existing=True,
     )
 
@@ -101,6 +126,8 @@ class TrackManager:
                 album_id=track.album_id,
                 album_name=track.album_name,
                 popularity=track.popularity,
+                artists=[artist.name for artist in track.artists],
+                album_art_url=track.album_art_url,
             )
             _ = await db.execute(stmt)
 
@@ -120,20 +147,27 @@ class TrackManager:
             table.c.album_id,
             table.c.album_name,
             table.c.popularity,
+            table.c.artists,
+            table.c.album_art_url,
         )
 
         result = await db.execute(stmt)
 
-        return [
+        print("RESULTS:")
+        track_responses = [
             TrackResponse(
                 spotify_id=row.spotify_id,
                 title=row.title,
                 album_id=row.album_id,
                 album_name=row.album_name,
                 popularity=row.popularity,
+                artists=row.artists,
+                album_art_url=row.album_art_url,
             )
             for row in result.fetchall()
         ]
+        print(f"SONK {track_responses}")
+        return track_responses
 
     @staticmethod
     async def get_track(
@@ -158,6 +192,8 @@ class TrackManager:
             album_id=row.album_id,
             album_name=row.album_name,
             popularity=row.popularity,
+            artists=row.artists,
+            album_art_url=row.album_art_url,
         )
 
 
@@ -182,20 +218,113 @@ async def get_or_create_artist(db: AsyncSession, spotify_id: str, name: str) -> 
     return artist
 
 
-# Initialize database
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def create_recommendations_table(artist_id: str) -> Table:
+    """Create recommendations table for an artist"""
+    table_name = f"recommendations_{artist_id.replace('-', '_')}"
+
+    return Table(
+        table_name,
+        Base.metadata,
+        Column("path_id", Integer, primary_key=True),  # Binary path encoding
+        Column("track_id", String, nullable=False),
+        extend_existing=True,
+    )
 
 
-# DB session dependency
-async def get_db() -> AsyncSession:
-    async with AsyncSessionLocal() as session:
+class RecommendationManager:
+    @staticmethod
+    def get_table_name(artist_id: str) -> str:
+        return f"recommendations_{artist_id.replace('-', '_')}"
+
+    @staticmethod
+    async def ensure_table_exists(db: AsyncSession, artist_id: str):
+        """Create recommendations table if it doesn't exist"""
+        table = create_recommendations_table(artist_id)
+
+        def create_table(connection: Connection):
+            table.create(bind=connection, checkfirst=True)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(create_table)
+
+    @staticmethod
+    async def get_initial_recommendation(
+        db: AsyncSession, artist_id: str
+    ) -> TrackResponse:
+        """Get first recommendation (most popular song)"""
+        await RecommendationManager.ensure_table_exists(db, artist_id)
+        table = create_recommendations_table(artist_id)
+
+        # Check if root recommendation already exists
+        stmt = select(table.c.track_id).where(table.c.path_id == 1)
+        result = await db.execute(stmt)
+        existing_track_id: str | None = result.scalar_one_or_none()
+
+        if existing_track_id:
+            existing_track = await TrackManager.get_track(
+                db=db, artist_id=artist_id, track_id=existing_track_id
+            )
+            if not existing_track:
+                raise ValueError(f"Track {existing_track_id} not found")
+            return existing_track
+
+        tracks = await TrackManager.get_tracks(db, artist_id)
+        if not tracks:
+            raise ValueError(f"No tracks found for artist {artist_id}")
+
+        initial_track = max(tracks, key=lambda t: t.popularity)
+
         try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+            # Use SQLAlchemy's SQLite-specific insert with ON CONFLICT clause
+            insert_stmt = (
+                insert(table)
+                .values(path_id=1, track_id=initial_track.spotify_id)
+                .on_conflict_do_nothing()
+            )
+            await db.execute(insert_stmt)
+            await db.commit()
+        except:
+            ...
+
+        return initial_track
+
+    @staticmethod
+    async def get_next_recommendation(
+        db: AsyncSession,
+        artist_id: str,
+        current_path: int,
+        liked: bool,
+    ) -> TrackResponse | None:
+        """Get or create next recommendation"""
+        table = create_recommendations_table(artist_id)
+        next_path = (current_path << 1) | (1 if liked else 0)
+
+        # Check if recommendation exists
+        stmt = select(table.c.track_id).where(table.c.path_id == next_path)
+        result = await db.execute(stmt)
+        existing_track_id = result.scalar_one_or_none()
+
+        if existing_track_id:
+            return await TrackManager.get_track(
+                db=db, artist_id=artist_id, track_id=existing_track_id
+            )
+
+        # Get used track IDs for this session
+        used_stmt = select(table.c.track_id)
+        used_track_ids = (await db.execute(used_stmt)).scalars().all()
+
+        # Temporary calculation
+        all_tracks = await TrackManager.get_tracks(db, artist_id)
+        available_tracks = [t for t in all_tracks if t.spotify_id not in used_track_ids]
+
+        if not available_tracks:
+            return None
+
+        next_track = random.choice(available_tracks)
+
+        # Store recommendation
+        stmt = insert(table).values(path_id=next_path, track_id=next_track.spotify_id)
+        await db.execute(stmt)
+        await db.commit()
+
+        return next_track

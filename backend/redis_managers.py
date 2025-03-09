@@ -1,6 +1,7 @@
-from dataclasses import dataclass, asdict
 import json
+from dataclasses import asdict, dataclass
 from typing import Any, Self
+
 from redis import Redis
 
 
@@ -9,16 +10,18 @@ class Song:
     song_id: str
     title: str
     artists: list[str]
-    album_name: str = "album name"
+    album_name: str
     popularity: int = 0
+    album_art_url: str | None = None
 
-    def to_dict(self) -> dict[str, str | list[str] | int]:
+    def to_dict(self) -> dict[str, str | list[str] | int | None]:
         return {
             "song_id": self.song_id,
             "title": self.title,
             "artists": self.artists,
             "album_name": self.album_name,
             "popularity": self.popularity,
+            "album_art_url": self.album_art_url,
         }
 
 

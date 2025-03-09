@@ -17,6 +17,7 @@ class SpotifyTrack(BaseModel):
     album_name: str | None = None
     album_id: str | None = None
     popularity: int = 0
+    album_art_url: str | None = None
 
     class Config:
         populate_by_name: bool = True
@@ -25,7 +26,22 @@ class SpotifyTrack(BaseModel):
 class SpotifyAlbum(BaseModel):
     id: str
     name: str
+    album_type: str  # album, single, compilation
+    release_date: str
+    total_tracks: int
+    images: list[dict]
+    artists: list[SpotifyArtist]
     tracks: list[SpotifyTrack] = []
+    external_urls: dict  # Contains Spotify URL
+    popularity: int | None = None
+    label: str | None = None
+
+    @property
+    def cover_image_url(self) -> str | None:
+        """Returns the URL of the largest album cover image"""
+        if self.images and len(self.images) > 0:
+            return self.images[0]["url"]
+        return None
 
 
 class SpotifyClient:
@@ -70,8 +86,6 @@ class SpotifyClient:
             while url:
                 response = await client.get(url, headers=headers, params=params)
                 json_result = response.json()
-
-                # Convert each album dict to Album model
                 albums.extend([SpotifyAlbum(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
@@ -110,10 +124,28 @@ class SpotifyClient:
         for album in albums:
             album_tracks = await self.get_album_tracks(album.id)
             for track in album_tracks:
-                # Only include tracks where the artist is a primary artist
-                if any(artist.id == artist_id for artist in track.artists):
-                    track.album_name = album.name
-                    track.album_id = album.id
-                    all_tracks.append(track)
+                track.album_name = album.name
+                track.album_id = album.id
+                track.album_art_url = album.cover_image_url
+                all_tracks.append(track)
 
         return all_tracks
+
+    async def get_artist(self, artist_id: str) -> SpotifyArtist:
+        """Get artist information by ID"""
+        token = await self.get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{self.base_url}/artists/{artist_id}"
+
+        print("Grabbing artist")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                raise Exception(f"Error fetching artist: {response.text}")
+
+            artist_data = response.json()
+            if not artist_data["id"] or not artist_data["name"]:
+                raise ValueError(
+                    f"Spotify returned an invalid artist ID or name: {artist_data=}"
+                )
+            return SpotifyArtist(id=artist_data["id"], name=artist_data["name"])

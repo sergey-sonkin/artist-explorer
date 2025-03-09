@@ -3,7 +3,7 @@ import { Search, ThumbsUp, ThumbsDown, Music2, Loader2 } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { VoteRequest, SongResponse } from "../types/api";
+import { VoteRequest, VoteResponse, SearchResponse, Song } from "../types/api";
 
 type CurrentState = "search" | "searching" | "loading" | "recommendation";
 
@@ -20,10 +20,10 @@ const SpotifyRecommender: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentState, setCurrentState] = useState<CurrentState>("search");
   const [currentSong, setCurrentSong] = useState<CurrentSong | null>(null);
-  const [voteHistory, setVoteHistory] = useState<boolean[]>([]);
   const [artistId, setArtistId] = useState<string | null>(null);
   const [artistName, setArtistName] = useState<string | null>(null);
   const [searchId, setSearchId] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState<number>(1);
 
   const handleSearch = async (): Promise<void> => {
     setCurrentState("searching");
@@ -39,7 +39,8 @@ const SpotifyRecommender: React.FC = () => {
         }),
       });
 
-      const data = await response.json();
+      const data: SearchResponse = await response.json();
+      console.log("Data received: ", data);
       setSearchId(data.searchId);
       setArtistId(data.artistId);
       setArtistName(data.artistName);
@@ -61,9 +62,9 @@ const SpotifyRecommender: React.FC = () => {
             setCurrentSong({
               title: data.song.title,
               artists: data.song.artists,
-              id: data.song.id,
-              albumName: data.album_name,
-              albumArt: "/api/placeholder/300/300",
+              id: data.song.song_id,
+              albumName: data.song.album_name,
+              albumArt: data.song.album_art_url,
             });
             eventSource.close();
             break;
@@ -99,18 +100,16 @@ const SpotifyRecommender: React.FC = () => {
     };
   }, [searchId]);
 
-  const handleVote = async (isLike: boolean): Promise<void> => {
-    console.log("Before vote - currentSong:", currentSong);
+  const handleVote = async (liked: boolean): Promise<void> => {
     setCurrentState("loading");
-    console.log("After vote - currentSong:", currentSong);
-    const newVoteHistory = [...voteHistory, isLike];
 
     try {
       const voteRequest: VoteRequest = {
-        artist_id: artistId!,
-        artist_name: artistName!,
-        vote_history: newVoteHistory,
+        artistId: artistId!,
+        currentPath: currentPath,
+        liked: liked,
       };
+      console.log(voteRequest);
 
       const response = await fetch(`http://127.0.0.1:8000/api/vote`, {
         method: "POST",
@@ -120,23 +119,22 @@ const SpotifyRecommender: React.FC = () => {
         body: JSON.stringify(voteRequest),
       });
 
-      const data: SongResponse = await response.json();
-      console.log("Here is the data we're getting");
-      console.log(data);
+      const data: VoteResponse = await response.json();
+      setCurrentPath(data.currentPath);
 
       if (data.status === "complete") {
         setCurrentState("search");
         setCurrentSong(null);
-        setVoteHistory([]);
+        setCurrentPath(0);
       } else {
         setCurrentSong({
-          title: data.song.title,
-          artists: data.song.artists,
-          id: data.song.song_id,
-          albumName: data.song.album_name,
-          albumArt: "/api/placeholder/300/300",
+          title: data.song!.title,
+          artists: data.song!.artists,
+          id: data.song!.song_id,
+          albumName: data.song!.album_name,
+          albumArt: data.song!.album_art_url,
         });
-        setVoteHistory(newVoteHistory);
+        setCurrentPath(data.currentPath);
         setCurrentState("recommendation");
       }
     } catch (error) {

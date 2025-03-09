@@ -1,17 +1,28 @@
 export interface VoteRequest {
-  artist_id: string;
-  artist_name: string;
-  vote_history: boolean[];
+  artistId: string;
+  currentPath: number;
+  liked: boolean;
 }
 
-export interface SongData {
-  album_name: string;
-  artists: string[];
-  popularity: number;
-  song_id: string;
-  title: string;
+export interface VoteResponse {
+  status: "continue" | "complete";
+  currentPath: number;
+  song?: Song;
 }
-export interface SongResponse {
-  song: SongData;
-  status: string;
+
+export interface SearchResponse {
+  searchId: string;
+  artistId: string;
+  artistName: string;
+  currentPath: number;
+  song: Song;
+}
+
+// We also need to define the Song interface
+export interface Song {
+  title: string;
+  artists: string[];
+  song_id: string;
+  album_name: string;
+  album_art_url: string;
 }

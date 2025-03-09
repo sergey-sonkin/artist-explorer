@@ -14,6 +14,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
             title=selected_tracks[0].title,
             artists=[artist_name],
             album_name=selected_tracks[0].album_name or "Unknown Album",
+            album_art_url=selected_tracks[0].album_art_url
+            or "https://via.placeholder.com/150",
         ),
         vote_no=TreeNode(
             song=Song(
@@ -21,6 +23,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                 title=selected_tracks[1].title,
                 artists=[artist_name],
                 album_name=selected_tracks[1].album_name or "Unknown Album",
+                album_art_url=selected_tracks[1].album_art_url
+                or "https://via.placeholder.com/150",
             ),
             vote_no=TreeNode(
                 song=Song(
@@ -28,6 +32,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                     title=selected_tracks[2].title,
                     artists=[artist_name],
                     album_name=selected_tracks[2].album_name or "Unknown Album",
+                    album_art_url=selected_tracks[2].album_art_url
+                    or "https://via.placeholder.com/150",
                 ),
             ),
             vote_yes=TreeNode(
@@ -36,6 +42,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                     title=selected_tracks[3].title,
                     artists=[artist_name],
                     album_name=selected_tracks[3].album_name or "Unknown Album",
+                    album_art_url=selected_tracks[3].album_art_url
+                    or "https://via.placeholder.com/150",
                 ),
             ),
         ),
@@ -45,6 +53,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                 title=selected_tracks[4].title,
                 artists=[artist_name],
                 album_name=selected_tracks[4].album_name or "Unknown Album",
+                album_art_url=selected_tracks[4].album_art_url
+                or "https://via.placeholder.com/150",
             ),
             vote_no=TreeNode(
                 song=Song(
@@ -52,6 +62,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                     title=selected_tracks[5].title,
                     artists=[artist_name],
                     album_name=selected_tracks[5].album_name or "Unknown Album",
+                    album_art_url=selected_tracks[5].album_art_url
+                    or "https://via.placeholder.com/150",
                 ),
             ),
             vote_yes=TreeNode(
@@ -60,6 +72,8 @@ def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> Tr
                     title=selected_tracks[6].title,
                     artists=[artist_name],
                     album_name=selected_tracks[6].album_name or "Unknown Album",
+                    album_art_url=selected_tracks[6].album_art_url
+                    or "https://via.placeholder.com/150",
                 ),
             ),
         ),
