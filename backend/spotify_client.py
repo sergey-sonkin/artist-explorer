@@ -92,12 +92,14 @@ class SpotifyClient:
                 raise ValueError("Failed to get Spotify access token")
             return self.token
 
-    async def get_artist_albums(self, artist_id: str) -> list[SpotifyAlbum]:
+    async def get_artist_albums(
+        self, artist_id: str, include_groups: str = "album,single"
+    ) -> list[SpotifyAlbum]:
         """Get all albums for an artist"""
         token = await self.get_token()
         headers = {"Authorization": f"Bearer {token}"}
         url = f"{self.base_url}/artists/{artist_id}/albums"
-        params = {"include_groups": "album,single", "limit": 50}
+        params = {"include_groups": include_groups, "limit": 50}
 
         albums: list[SpotifyAlbum] = []
         async with httpx.AsyncClient() as client:
@@ -138,17 +140,32 @@ class SpotifyClient:
         return tracks
 
     async def get_all_artist_tracks(self, artist_id: str) -> list[SpotifyTrack]:
-        """Get all tracks by an artist through their albums"""
-        albums = await self.get_artist_albums(artist_id)
+        """Get all tracks by an artist through their albums and singles"""
+        albums = await self.get_artist_albums(artist_id, include_groups="albums")
 
         all_tracks: list[SpotifyTrack] = []
+        seen_track_titles: set[str] = set()
         for album in albums:
             album_tracks = await self.get_album_tracks(album.id)
             for track in album_tracks:
-                track.album_name = album.name
-                track.album_id = album.id
-                track.album_art_url = album.cover_image_url
-                all_tracks.append(track)
+                if track.title not in seen_track_titles:
+                    track.album_name = album.name
+                    track.album_id = album.id
+                    track.album_art_url = album.cover_image_url
+                    all_tracks.append(track)
+                    seen_track_titles.add(track.title)
+
+        # TODO: Maybe we add some filtering instead of having 2x API calls?
+        single_albums = await self.get_artist_albums(artist_id, include_groups="single")
+        for album in single_albums:
+            single_album_tracks = await self.get_album_tracks(album.id)
+            for single_track in single_album_tracks:
+                if single_track.title not in seen_track_titles:
+                    single_track.album_name = album.name
+                    single_track.album_id = album.id
+                    single_track.album_art_url = album.cover_image_url
+                    seen_track_titles.add(single_track.title)
+                    all_tracks.append(single_track)
 
         return all_tracks
 
