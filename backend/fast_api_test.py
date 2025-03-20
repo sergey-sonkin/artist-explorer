@@ -4,6 +4,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from contextlib import asynccontextmanager
 
 from database import (
     RecommendationManager,
@@ -22,7 +23,12 @@ from spotify_client import SpotifyClient
 from sqlalchemy.ext.asyncio import AsyncSession  # type: ignore
 from tree_builder import create_tree_from_tracks
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],  # React app's URL
@@ -30,11 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
 
 
 redis_client = Redis(host="localhost", port=6379, db=0)
