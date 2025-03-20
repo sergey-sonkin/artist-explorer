@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from redis import Redis
 from redis_managers import Search, SearchManager, SessionManager, TreeNode
 from spotify_client import SpotifyClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession  # type: ignore
 from tree_builder import create_tree_from_tracks
 
 app = FastAPI()
