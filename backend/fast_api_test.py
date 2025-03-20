@@ -17,8 +17,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from redis import Redis
-from redis_managers import Search, SearchManager, SessionManager, Song, TreeNode
-from spotify_client import SpotifyAlbum, SpotifyClient
+from redis_managers import Search, SearchManager, SessionManager, TreeNode
+from spotify_client import SpotifyClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from tree_builder import create_tree_from_tracks
 

@@ -1,6 +1,4 @@
-from datetime import datetime, timezone
 import random
-from trace import Trace
 from pydantic import BaseModel
 from spotify_client import SpotifyTrack
 from sqlalchemy import (
@@ -8,13 +6,13 @@ from sqlalchemy import (
     Column,
     Connection,
     DateTime,
+    Float,
     Integer,
     String,
     Table,
     delete,
     insert,
     select,
-    text,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -56,6 +54,30 @@ class TrackResponse(BaseModel):
     class Config:
         from_attributes: bool = True
 
+    @classmethod
+    def select_all_columns(cls, table: Table):
+        return select(
+            table.c.spotify_id,
+            table.c.title,
+            table.c.album_id,
+            table.c.album_name,
+            table.c.popularity,
+            table.c.artists,
+            table.c.album_art_url,
+        )
+
+    @classmethod
+    def select_all_columns_with_features(cls, table: Table):
+        return select(
+            table.c.spotify_id,
+            table.c.title,
+            table.c.album_id,
+            table.c.album_name,
+            table.c.popularity,
+            table.c.artists,
+            table.c.album_art_url,
+        )
+
 
 class Artist(Base):
     __tablename__ = "artists"
@@ -82,6 +104,18 @@ def create_track_table(artist_id: str) -> Table:
         Column("artists", JSON),
         Column("popularity", Integer, default=0),
         Column("album_art_url", String),
+        Column("acousticness", Float),
+        Column("danceability", Float),
+        Column("energy", Float),
+        Column("instrumentalness", Float),
+        Column("key", Integer),
+        Column("liveness", Float),
+        Column("loudness", Float),
+        Column("mode", Integer),
+        Column("speechiness", Float),
+        Column("tempo", Float),
+        Column("time_signature", Integer),
+        Column("valence", Float),
         extend_existing=True,
     )
 
@@ -134,26 +168,20 @@ class TrackManager:
         await db.commit()
 
     @staticmethod
-    async def get_tracks(db: AsyncSession, artist_id: str) -> list[TrackResponse]:
+    async def get_tracks(
+        db: AsyncSession, artist_id: str, debug: bool = False
+    ) -> list[TrackResponse]:
         """Get all tracks for an artist"""
         await TrackManager.ensure_table_exists(db, artist_id)
 
         table = create_track_table(artist_id)
-        print(f"About to fetch all tracks for {artist_id=}")
+        if debug:
+            print(f"TrackManager.get_tracks: Fetching all tracks for {artist_id=}")
 
-        stmt = select(
-            table.c.spotify_id,
-            table.c.title,
-            table.c.album_id,
-            table.c.album_name,
-            table.c.popularity,
-            table.c.artists,
-            table.c.album_art_url,
-        )
+        result = await db.execute(TrackResponse.select_all_columns(table))
 
-        result = await db.execute(stmt)
-
-        print("RESULTS:")
+        if debug:
+            print("TrackManager.get_tracks: RESULTS:")
         track_responses = [
             TrackResponse(
                 spotify_id=row.spotify_id,

@@ -1,6 +1,7 @@
 import random
-from redis_managers import Song, TreeNode
+
 from database import TrackResponse
+from redis_managers import Song, TreeNode
 
 
 def create_tree_from_tracks(tracks: list[TrackResponse], artist_name: str) -> TreeNode:
