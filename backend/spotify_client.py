@@ -86,7 +86,7 @@ class SpotifyClient:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, data=data)
-            json_result = response.json()
+            json_result = await response.json()
             self.token = json_result.get("access_token")
             if not self.token:
                 raise ValueError("Failed to get Spotify access token")
@@ -105,7 +105,7 @@ class SpotifyClient:
         async with httpx.AsyncClient() as client:
             while url:
                 response = await client.get(url, headers=headers, params=params)
-                json_result = response.json()
+                json_result = await response.json()
                 albums.extend([SpotifyAlbum(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
@@ -126,7 +126,7 @@ class SpotifyClient:
         async with httpx.AsyncClient() as client:
             while url:
                 response = await client.get(url, headers=headers, params=params)
-                json_result = response.json()
+                json_result = await response.json()
                 if debug:
                     print("==========================")
                     print(json_result)
@@ -138,36 +138,6 @@ class SpotifyClient:
                 params = {}
 
         return tracks
-
-    async def get_all_artist_tracks(self, artist_id: str) -> list[SpotifyTrack]:
-        """Get all tracks by an artist through their albums and singles"""
-        albums = await self.get_artist_albums(artist_id, include_groups="albums")
-
-        all_tracks: list[SpotifyTrack] = []
-        seen_track_titles: set[str] = set()
-        for album in albums:
-            album_tracks = await self.get_album_tracks(album.id)
-            for track in album_tracks:
-                if track.title not in seen_track_titles:
-                    track.album_name = album.name
-                    track.album_id = album.id
-                    track.album_art_url = album.cover_image_url
-                    all_tracks.append(track)
-                    seen_track_titles.add(track.title)
-
-        # TODO: Maybe we add some filtering instead of having 2x API calls?
-        single_albums = await self.get_artist_albums(artist_id, include_groups="single")
-        for album in single_albums:
-            single_album_tracks = await self.get_album_tracks(album.id)
-            for single_track in single_album_tracks:
-                if single_track.title not in seen_track_titles:
-                    single_track.album_name = album.name
-                    single_track.album_id = album.id
-                    single_track.album_art_url = album.cover_image_url
-                    seen_track_titles.add(single_track.title)
-                    all_tracks.append(single_track)
-
-        return all_tracks
 
     async def get_artist(self, artist_id: str, debug: bool = False) -> SpotifyArtist:
         """Get artist information by ID"""
@@ -182,7 +152,7 @@ class SpotifyClient:
             if response.status_code != 200:
                 raise Exception(f"Error fetching artist: {response.text}")
 
-            artist_data = response.json()
+            artist_data = await response.json()
             if not artist_data["id"] or not artist_data["name"]:
                 raise ValueError(
                     f"Spotify returned an invalid artist ID or name: {artist_data=}"
@@ -215,7 +185,7 @@ class SpotifyClient:
                         print(f"Error fetching audio features: {response.text}")
                     continue
 
-                data = response.json()
+                data = await response.json()
 
                 for feature in data.get("audio_features", []):
                     if feature:  # Sometimes the API returns null for certain tracks
@@ -237,3 +207,40 @@ class SpotifyClient:
                             )
 
         return results
+
+    async def get_all_artist_tracks(self, artist_id: str) -> list[SpotifyTrack]:
+        """Get all tracks by an artist through their albums and singles"""
+        albums = await self.get_artist_albums(artist_id, include_groups="albums")
+
+        all_tracks: list[SpotifyTrack] = []
+        seen_track_titles: set[str] = set()
+        for album in albums:
+            album_tracks = await self.get_album_tracks(album.id)
+            for track in album_tracks:
+                if track.title not in seen_track_titles:
+                    track.album_name = album.name
+                    track.album_id = album.id
+                    track.album_art_url = album.cover_image_url
+                    all_tracks.append(track)
+                    seen_track_titles.add(track.title)
+
+        # TODO: Maybe we add some filtering instead of having 2x API calls?
+        single_albums = await self.get_artist_albums(artist_id, include_groups="single")
+        for album in single_albums:
+            single_album_tracks = await self.get_album_tracks(album.id)
+            for single_track in single_album_tracks:
+                if single_track.title not in seen_track_titles:
+                    single_track.album_name = album.name
+                    single_track.album_id = album.id
+                    single_track.album_art_url = album.cover_image_url
+                    seen_track_titles.add(single_track.title)
+                    all_tracks.append(single_track)
+
+        features_dict = await self.get_audio_features_batch(
+            [track.spotify_id for track in all_tracks]
+        )
+        for track in all_tracks:
+            if track.spotify_id in features_dict:
+                track.audio_features = features_dict[track.spotify_id]
+
+        return all_tracks

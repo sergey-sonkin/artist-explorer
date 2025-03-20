@@ -11,8 +11,13 @@ greenlet = "*"
 redis = "*"
 sqlalchemy = "*"
 uvicorn = "*"
+sqlalchemy-stubs = "*"
 
 [dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
+pytest-mock = "*"
+pytest-cov = "*"
 
 [requires]
 python_version = "3.13"
