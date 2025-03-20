@@ -35,8 +35,9 @@ class SpotifyTrack(BaseModel):
     album_art_url: str | None = None
     audio_features: AudioFeatures | None = None
 
-    class Config:
-        populate_by_name: bool = True
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class SpotifyAlbum(BaseModel):

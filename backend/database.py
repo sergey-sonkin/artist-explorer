@@ -51,8 +51,9 @@ class TrackResponse(BaseModel):
     artists: list[str]
     album_art_url: str | None = None
 
-    class Config:
-        from_attributes: bool = True
+    model_config = {
+        "from_attributes": True
+    }
 
     @classmethod
     def select_all_columns(cls, table: Table):
