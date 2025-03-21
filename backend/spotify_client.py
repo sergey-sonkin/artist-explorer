@@ -87,7 +87,7 @@ class SpotifyClient:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=headers, data=data)
-            json_result = await response.json()
+            json_result = response.json()
             self.token = json_result.get("access_token")
             if not self.token:
                 raise ValueError("Failed to get Spotify access token")
@@ -106,7 +106,7 @@ class SpotifyClient:
         async with httpx.AsyncClient() as client:
             while url:
                 response = await client.get(url, headers=headers, params=params)
-                json_result = await response.json()
+                json_result = response.json()
                 albums.extend([SpotifyAlbum(**item) for item in json_result["items"]])
 
                 url = json_result.get("next")
@@ -127,7 +127,7 @@ class SpotifyClient:
         async with httpx.AsyncClient() as client:
             while url:
                 response = await client.get(url, headers=headers, params=params)
-                json_result = await response.json()
+                json_result = response.json()
                 if debug:
                     print("==========================")
                     print(json_result)
@@ -153,7 +153,7 @@ class SpotifyClient:
             if response.status_code != 200:
                 raise Exception(f"Error fetching artist: {response.text}")
 
-            artist_data = await response.json()
+            artist_data = response.json()
             if not artist_data["id"] or not artist_data["name"]:
                 raise ValueError(
                     f"Spotify returned an invalid artist ID or name: {artist_data=}"
@@ -186,7 +186,7 @@ class SpotifyClient:
                         print(f"Error fetching audio features: {response.text}")
                     continue
 
-                data = await response.json()
+                data = response.json()
 
                 for feature in data.get("audio_features", []):
                     if feature:  # Sometimes the API returns null for certain tracks
