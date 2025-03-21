@@ -82,7 +82,7 @@ async def search_songs_for_artist(
     if bool(needs_update):
         tracks = await spotify_client.get_all_artist_tracks(artist_id)
         print(tracks)
-        await TrackManager.update_tracks(db, artist_id, tracks)
+        _ = await TrackManager.update_tracks(db, artist_id, tracks)
 
         artist.last_updated = datetime.now(timezone.utc)
         await db.commit()
