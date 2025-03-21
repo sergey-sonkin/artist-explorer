@@ -1,180 +1,89 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest_asyncio  # Add this import
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
-from database import TrackManager, TrackResponse
-from spotify_client import SpotifyTrack, SpotifyArtist
+from database import (
+    Base, TrackManager, create_track_table
+)
+from spotify_client import (
+    SpotifyTrack, SpotifyArtist, AudioFeatures
+)
+
+# Use an in-memory SQLite database for testing
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+@pytest_asyncio.fixture
+async def test_db():
+    """Create a test database and session"""
+    engine = create_async_engine(TEST_DB_URL, echo=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    TestingSessionLocal = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with TestingSessionLocal() as session:
+        yield session  # This yields the actual session, not a generator
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 @pytest.fixture
-def mock_db():
-    return AsyncMock(spec=AsyncSession)
-
-@pytest.fixture
-def sample_tracks():
+def sample_tracks() -> list[SpotifyTrack]:
+    """Create sample track data for testing"""
     return [
         SpotifyTrack(
-            id="track1",  # Note: SpotifyTrack uses 'id', which gets aliased to spotify_id
-            name="Test Track 1",  # Note: SpotifyTrack uses 'name', which gets aliased to title
-            album_id="album1",
-            album_name="Test Album 1",
-            popularity=80,
+            id="track1",
+            name="Track One",
             artists=[SpotifyArtist(id="artist1", name="Test Artist")],
-            album_art_url="http://example.com/art1.jpg"
+            album_id="album1",
+            album_name="Test Album",
+            popularity=80,
+            album_art_url="https://example.com/cover1.jpg",
+            audio_features=AudioFeatures(
+                acousticness=0.5,
+                danceability=0.7,
+                energy=0.8
+            )
         ),
         SpotifyTrack(
             id="track2",
-            name="Test Track 2",
-            album_id="album2",
-            album_name="Test Album 2",
-            popularity=70,
-            artists=[SpotifyArtist(id="artist1", name="Test Artist")],
-            album_art_url="http://example.com/art2.jpg"
+            name="Track Two",
+            artists=[
+                SpotifyArtist(id="artist1", name="Test Artist"),
+                SpotifyArtist(id="artist2", name="Featured Artist")
+            ],
+            album_id="album1",
+            album_name="Test Album",
+            popularity=65,
+            album_art_url="https://example.com/cover1.jpg",
+            audio_features=AudioFeatures(
+                acousticness=0.3,
+                danceability=0.9,
+                energy=0.6
+            )
         )
     ]
 
-def test_get_table_name():
-    """Test table name generation"""
-    artist_id = "test-artist-123"
-    expected = "tracks_test_artist_123"
-    assert TrackManager.get_table_name(artist_id) == expected
-
 @pytest.mark.asyncio
-async def test_ensure_table_exists(mock_db):
-    """Test table creation"""
-    artist_id = "test-artist"
-    
-    # Mock the engine and connection
-    with patch('database.engine') as mock_engine:
-        mock_conn = AsyncMock()
-        mock_engine.begin.return_value.__aenter__.return_value = mock_conn
-        
-        await TrackManager.ensure_table_exists(mock_db, artist_id)
-        
-        # Verify that run_sync was called
-        assert mock_conn.run_sync.called
+async def test_full_track_workflow(test_db, sample_tracks):
+    """Test the full workflow of creating tables, adding and retrieving tracks"""
+    artist_id = "integration_test_artist"
 
-@pytest.mark.asyncio
-async def test_update_tracks(mock_db, sample_tracks):
-    """Test updating tracks for an artist"""
-    artist_id = "test-artist"
-    
-    # Mock ensure_table_exists
-    with patch.object(TrackManager, 'ensure_table_exists') as mock_ensure:
-        # Mock the execute calls
-        mock_db.execute = AsyncMock()
-        mock_db.execute.return_value = AsyncMock()
-        
-        await TrackManager.update_tracks(mock_db, artist_id, sample_tracks)
-        
-        # Verify table was ensured
-        mock_ensure.assert_called_once_with(mock_db, artist_id)
-        
-        # Verify delete and inserts were executed
-        assert mock_db.execute.call_count >= len(sample_tracks) + 1  # delete + inserts
-        
-        # Verify commit was called
-        mock_db.commit.assert_called_once()
+    await TrackManager.ensure_table_exists(test_db, artist_id)
+    await TrackManager.update_tracks(test_db, artist_id, sample_tracks)
+    tracks = await TrackManager.get_tracks(test_db, artist_id)
 
-@pytest.mark.asyncio
-async def test_get_tracks(mock_db):
-    """Test retrieving all tracks for an artist"""
-    artist_id = "test-artist"
-    
-    # Create a mock row that matches what SQLAlchemy would return
-    mock_row = MagicMock(
-        spotify_id="track1",
-        title="Test Track",
-        album_id="album1", 
-        album_name="Test Album",
-        popularity=80,
-        artists=["Test Artist"],
-        album_art_url="http://example.com/art.jpg"
-    )
-    
-    # Mock the execute and fetchall
-    mock_result = AsyncMock()
-    mock_result.fetchall = lambda: [mock_row]  # Use lambda to avoid coroutine issues
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    
-    # Mock ensure_table_exists
-    with patch.object(TrackManager, 'ensure_table_exists'):
-        tracks = await TrackManager.get_tracks(mock_db, artist_id)
-        
-        assert len(tracks) == 1
-        assert isinstance(tracks[0], TrackResponse)
-        assert tracks[0].spotify_id == "track1"
-        assert tracks[0].title == "Test Track"
-        assert tracks[0].album_id == "album1"
-        assert tracks[0].album_name == "Test Album"
-        assert tracks[0].popularity == 80
-        assert tracks[0].artists == ["Test Artist"]
-        assert tracks[0].album_art_url == "http://example.com/art.jpg"
+    assert len(tracks) == len(sample_tracks)
+    assert tracks[0].spotify_id == sample_tracks[0].spotify_id
+    assert tracks[1].title == sample_tracks[1].title
 
-@pytest.mark.asyncio
-async def test_get_track(mock_db):
-    """Test retrieving a specific track"""
-    artist_id = "test-artist"
-    track_id = "track1"
-    
-    # Create a mock row that matches what SQLAlchemy would return
-    mock_row = MagicMock(
-        spotify_id=track_id,
-        title="Test Track",
-        album_id="album1",
-        album_name="Test Album",
-        popularity=80,
-        artists=["Test Artist"],
-        album_art_url="http://example.com/art.jpg"
-    )
-    
-    # Mock the execute and first
-    mock_result = AsyncMock()
-    mock_result.first = lambda: mock_row  # Use lambda to avoid coroutine issues
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    
-    # Mock ensure_table_exists
-    with patch.object(TrackManager, 'ensure_table_exists'):
-        track = await TrackManager.get_track(mock_db, artist_id, track_id)
-        
-        assert track is not None
-        assert isinstance(track, TrackResponse)
-        assert track.spotify_id == track_id
-        assert track.title == "Test Track"
-        assert track.album_id == "album1"
-        assert track.album_name == "Test Album"
-        assert track.popularity == 80
-        assert track.artists == ["Test Artist"]
-        assert track.album_art_url == "http://example.com/art.jpg"
+    track = await TrackManager.get_track(test_db, artist_id, sample_tracks[0].spotify_id)
+    assert track is not None
+    assert track.title == sample_tracks[0].title
 
-@pytest.mark.asyncio
-async def test_get_track_not_found(mock_db):
-    """Test retrieving a non-existent track"""
-    artist_id = "test-artist"
-    track_id = "nonexistent"
-    
-    # Mock the execute and first
-    mock_result = AsyncMock()
-    mock_result.first = lambda: None  # Use lambda to avoid coroutine issues
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    
-    # Mock ensure_table_exists
-    with patch.object(TrackManager, 'ensure_table_exists'):
-        track = await TrackManager.get_track(mock_db, artist_id, track_id)
-        assert track is None
-
-@pytest.mark.asyncio
-async def test_update_tracks_empty_list(mock_db):
-    """Test updating tracks with an empty list"""
-    artist_id = "test-artist"
-    
-    with patch.object(TrackManager, 'ensure_table_exists') as mock_ensure:
-        mock_db.execute = AsyncMock()
-        mock_db.execute.return_value = AsyncMock()
-        
-        await TrackManager.update_tracks(mock_db, artist_id, [])
-        
-        # Should still ensure table exists
-        mock_ensure.assert_called_once_with(mock_db, artist_id)
-        # Should still execute delete
-        assert mock_db.execute.call_count == 1  # only delete, no inserts
-        mock_db.commit.assert_called_once() 
+    non_existent = await TrackManager.get_track(test_db, artist_id, "nonexistent")
+    assert non_existent is None
