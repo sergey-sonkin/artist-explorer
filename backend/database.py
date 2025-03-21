@@ -133,11 +133,15 @@ class TrackManager:
         """Create track table if it doesn't exist"""
         table = create_track_table(artist_id)
 
-        def create_table(connection: Connection):
-            table.create(bind=connection, checkfirst=True)
+        engine = db.get_bind()
 
-        async with engine.begin() as conn:
-            await conn.run_sync(create_table)
+        def create_table(connection):
+            table.create(connection, checkfirst=True)
+
+        conn = await db.connection()
+        await conn.run_sync(create_table)
+
+        await db.commit()
 
     @staticmethod
     async def update_tracks(
